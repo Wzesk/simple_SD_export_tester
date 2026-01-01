@@ -25,6 +25,7 @@ const envEndpoint = document.getElementById('envEndpoint') as HTMLElement;
 const progressBar = document.getElementById('progressBar') as HTMLElement;
 const progressFill = document.getElementById('progressFill') as HTMLElement;
 const exportInfo = document.getElementById('exportInfo') as HTMLElement;
+const jsonInput = document.getElementById('jsonInput') as HTMLTextAreaElement;
 
 // Environment variables
 const EXPORT_BACKEND = import.meta.env.VITE_EXPORT_BACKEND;
@@ -286,9 +287,41 @@ async function triggerExport() {
             log(`  Parameter ${param.name}: ${param.stringify()}`, 'debug');
         }
         
+        // Add JSON input if provided
+        const jsonInputValue = jsonInput.value.trim();
+        if (jsonInputValue) {
+            try {
+                // Validate JSON
+                JSON.parse(jsonInputValue);
+                
+                // Check if moda-json parameter exists in session
+                const hasModaJsonParam = Object.entries(session.parameters).some(
+                    ([id, param]) => id === 'moda-json' || param.name === 'moda-json'
+                );
+                
+                if (hasModaJsonParam) {
+                    parameters['moda-json'] = jsonInputValue;
+                    log(`✓ Adding moda-json parameter: ${jsonInputValue.substring(0, 100)}${jsonInputValue.length > 100 ? '...' : ''}`, 'info');
+                } else {
+                    log(`⚠️ Warning: 'moda-json' parameter not found in session parameters`, 'warning');
+                    log('Available parameters:', 'debug');
+                    Object.entries(session.parameters).forEach(([id, param]) => {
+                        log(`  - ID: ${id}, Name: ${param.name}`, 'debug');
+                    });
+                    log('Attempting to add moda-json parameter anyway...', 'info');
+                    parameters['moda-json'] = jsonInputValue;
+                }
+            } catch (e: any) {
+                log(`⚠️ Warning: JSON input is not valid JSON: ${e.message}`, 'warning');
+                log('Continuing without moda-json parameter', 'warning');
+            }
+        }
+        
         updateProgress(40);
         
         log('🚀 Requesting export from backend...', 'info');
+        log(`Sending parameters: ${JSON.stringify(parameters, null, 2)}`, 'debug');
+        
         const exportResult = await exportApi.request(parameters);
         
         updateProgress(70);
@@ -339,16 +372,32 @@ async function triggerExport() {
         
     } catch (error: any) {
         log(`❌ Export failed: ${error.message}`, 'error');
+        
+        // Log detailed error information
+        if (error.response) {
+            log(`Response status: ${error.response.status}`, 'error');
+            log(`Response data: ${JSON.stringify(error.response.data, null, 2)}`, 'error');
+        }
+        if (error.config) {
+            log(`Request URL: ${error.config.url}`, 'debug');
+            log(`Request method: ${error.config.method}`, 'debug');
+            if (error.config.data) {
+                log(`Request data: ${error.config.data}`, 'debug');
+            }
+        }
         if (error.stack) {
             log(`Stack trace: ${error.stack}`, 'debug');
         }
+        
         exportStatus.textContent = 'Export failed';
         updateStatus('Export Failed', 'error');
         hideProgress();
         
         const errorInfo = `
             <strong>❌ Export failed</strong><br>
-            <strong>Error:</strong> ${error.message}
+            <strong>Error:</strong> ${error.message}<br>
+            ${error.response ? `<strong>Status:</strong> ${error.response.status}<br>` : ''}
+            ${error.response?.data ? `<strong>Details:</strong> ${JSON.stringify(error.response.data)}` : ''}
         `;
         showExportInfo(errorInfo);
         

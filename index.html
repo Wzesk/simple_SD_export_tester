@@ -276,6 +276,37 @@
         .export-info a:hover {
             text-decoration: underline;
         }
+
+        .input-section {
+            margin-bottom: 20px;
+        }
+
+        .input-section label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .input-section textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            resize: vertical;
+            transition: border-color 0.2s;
+        }
+
+        .input-section textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .input-section textarea::placeholder {
+            color: #999;
+        }
     </style>
 </head>
 <body>
@@ -305,6 +336,20 @@
             <div class="progress-bar" id="progressBar" style="display: none;">
                 <div class="progress-fill" id="progressFill"></div>
             </div>
+        </div>
+
+        <div class="input-section">
+            <label for="jsonInput">
+                <strong>JSON Input</strong> (moda-json parameter):
+            </label>
+            <textarea 
+                id="jsonInput" 
+                placeholder='Paste your JSON here, e.g. {"key": "value"}'
+                rows="6"
+            ></textarea>
+            <small style="color: #666; display: block; margin-top: 4px;">
+                This will be submitted as the "moda-json" parameter to ShapeDiver
+            </small>
         </div>
 
         <div class="button-section">
