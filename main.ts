@@ -5,10 +5,15 @@
  * It provides detailed logging and status updates for debugging purposes.
  */
 
-import { createSession, ISessionApi } from '@shapediver/viewer.session';
+import {
+    Configuration,
+    SessionApi,
+    ExportApi,
+} from '@shapediver/sdk.geometry-api-sdk-v2';
 
 // State management
-let session: ISessionApi | undefined;
+let sessionId: string | undefined;
+let sessionData: any;
 let isConnected = false;
 
 // DOM Elements
@@ -25,7 +30,7 @@ const envEndpoint = document.getElementById('envEndpoint') as HTMLElement;
 const progressBar = document.getElementById('progressBar') as HTMLElement;
 const progressFill = document.getElementById('progressFill') as HTMLElement;
 const exportInfo = document.getElementById('exportInfo') as HTMLElement;
-const jsonInput = document.getElementById('jsonInput') as HTMLTextAreaElement;
+const jsonInput = document.getElementById('jsonInput') as HTMLInputElement;
 
 // Environment variables
 const EXPORT_BACKEND = import.meta.env.VITE_EXPORT_BACKEND;
@@ -115,7 +120,7 @@ async function connectToBackend() {
         return;
     }
     
-    if (isConnected && session) {
+    if (isConnected && sessionId) {
         log('ℹ️ Already connected. Closing existing session first...', 'info');
         await disconnectFromBackend();
     }
@@ -129,50 +134,55 @@ async function connectToBackend() {
         
         log(`Using ticket: ${EXPORT_BACKEND.substring(0, 40)}...`, 'debug');
         
-        const sessionDto = {
-            id: 'export-test-session',
-            ticket: EXPORT_BACKEND,
-            modelViewUrl: SHAPEDIVER_ENDPOINT || 'https://sdr8euc1.eu-central-1.shapediver.com',
-        };
-        
-        log('Creating session with configuration:', 'debug');
-        log(JSON.stringify(sessionDto, null, 2), 'debug');
+        const endpoint = SHAPEDIVER_ENDPOINT || 'https://sdr8euc1.eu-central-1.shapediver.com';
         
         updateProgress(30);
         
-        session = await createSession(sessionDto);
+        // Create SDK configuration
+        const config = new Configuration({ basePath: endpoint });
+        
+        log('Creating session with SessionApi...', 'debug');
+        
+        // Create session using SessionApi
+        const sessionApi = new SessionApi(config);
+        const sessionResponse = await sessionApi.createSessionByTicket(EXPORT_BACKEND);
         
         updateProgress(60);
         
-        if (!session) {
-            throw new Error('Session creation returned undefined');
+        if (!sessionResponse.data) {
+            throw new Error('Session creation returned no data');
         }
         
-        log('✅ Session created successfully!', 'success');
-        log(`Session ID: ${session.id}`, 'info');
+        sessionData = sessionResponse.data;
+        sessionId = sessionData.sessionId;
         
-        sessionIdElement.textContent = session.id;
+        log('✅ Session created successfully!', 'success');
+        log(`Session ID: ${sessionId}`, 'info');
+        
+        sessionIdElement.textContent = sessionId;
         isConnected = true;
         
         updateProgress(80);
         
         // Log session details
-        log(`Parameters available: ${Object.keys(session.parameters).length}`, 'info');
-        log(`Exports available: ${Object.keys(session.exports).length}`, 'info');
-        log(`Outputs available: ${Object.keys(session.outputs).length}`, 'info');
+        const paramCount = sessionData.parameters ? Object.keys(sessionData.parameters).length : 0;
+        const exportCount = sessionData.exports ? Object.keys(sessionData.exports).length : 0;
+        
+        log(`Parameters available: ${paramCount}`, 'info');
+        log(`Exports available: ${exportCount}`, 'info');
         
         // Log parameter names
-        if (Object.keys(session.parameters).length > 0) {
+        if (sessionData.parameters && paramCount > 0) {
             log('Parameters:', 'debug');
-            Object.entries(session.parameters).forEach(([id, param]) => {
+            Object.entries(sessionData.parameters).forEach(([id, param]: [string, any]) => {
                 log(`  - ${param.name} (${id}): ${param.type}`, 'debug');
             });
         }
         
         // Log export names
-        if (Object.keys(session.exports).length > 0) {
+        if (sessionData.exports && exportCount > 0) {
             log('Exports:', 'debug');
-            Object.entries(session.exports).forEach(([id, exp]) => {
+            Object.entries(sessionData.exports).forEach(([id, exp]: [string, any]) => {
                 log(`  - ${exp.name} (${id})`, 'debug');
             });
         }
@@ -194,20 +204,14 @@ async function connectToBackend() {
             log(`Response status: ${error.response.status}`, 'error');
             log(`Response data: ${JSON.stringify(error.response.data, null, 2)}`, 'error');
         }
-        if (error.request) {
-            log(`Request config: ${JSON.stringify({
-                url: error.config?.url,
-                method: error.config?.method,
-                baseURL: error.config?.baseURL
-            }, null, 2)}`, 'debug');
-        }
         if (error.stack) {
             log(`Stack trace: ${error.stack}`, 'debug');
         }
         
         updateStatus('Connection Failed', 'error');
         isConnected = false;
-        session = undefined;
+        sessionId = undefined;
+        sessionData = undefined;
         sessionIdElement.textContent = '-';
         exportBtn.disabled = true;
         hideProgress();
@@ -218,7 +222,7 @@ async function connectToBackend() {
 
 // Disconnect from backend
 async function disconnectFromBackend() {
-    if (!session) {
+    if (!sessionId) {
         log('ℹ️ No active session to disconnect', 'info');
         return;
     }
@@ -227,11 +231,11 @@ async function disconnectFromBackend() {
         log('🔌 Disconnecting from backend...', 'info');
         updateStatus('Disconnecting...', 'processing');
         
-        await session.close();
+        // Note: SDK v2 sessions are managed server-side, no explicit close needed
+        log('✅ Session cleared', 'success');
         
-        log('✅ Session closed successfully', 'success');
-        
-        session = undefined;
+        sessionId = undefined;
+        sessionData = undefined;
         isConnected = false;
         sessionIdElement.textContent = '-';
         exportStatus.textContent = 'Not started';
@@ -249,7 +253,7 @@ async function disconnectFromBackend() {
 
 // Trigger export
 async function triggerExport() {
-    if (!session) {
+    if (!sessionId || !sessionData) {
         log('❌ Cannot export: No active session', 'error');
         return;
     }
@@ -264,7 +268,7 @@ async function triggerExport() {
         hideExportInfo();
         
         // Get available exports
-        const exports = Object.entries(session.exports);
+        const exports = sessionData.exports ? Object.entries(sessionData.exports) : [];
         
         if (exports.length === 0) {
             throw new Error('No exports available in this session');
@@ -274,97 +278,145 @@ async function triggerExport() {
         updateProgress(20);
         
         // Use the first export for testing
-        const [exportId, exportApi] = exports[0];
-        log(`Using export: ${exportApi.name} (${exportId})`, 'info');
+        const [exportId, exportDef] = exports[0];
+        const exportName = (exportDef as any).name || 'export';
+        log(`Using export: ${exportName} (${exportId})`, 'info');
         
-        exportStatus.textContent = `Requesting: ${exportApi.name}`;
-        updateProgress(30);
+        exportStatus.textContent = `Requesting: ${exportName}`;
+        updateProgress(25);
         
-        // Get current parameter values
-        const parameters: { [key: string]: string } = {};
-        for (const [paramId, param] of Object.entries(session.parameters)) {
-            parameters[paramId] = param.stringify();
-            log(`  Parameter ${param.name}: ${param.stringify()}`, 'debug');
-        }
-        
-        // Add JSON input if provided
-        const jsonInputValue = jsonInput.value.trim();
-        if (jsonInputValue) {
-            try {
-                // Validate JSON
-                JSON.parse(jsonInputValue);
-                
-                // Check if moda-json parameter exists in session
-                const hasModaJsonParam = Object.entries(session.parameters).some(
-                    ([id, param]) => id === 'moda-json' || param.name === 'moda-json'
-                );
-                
-                if (hasModaJsonParam) {
-                    parameters['moda-json'] = jsonInputValue;
-                    log(`✓ Adding moda-json parameter: ${jsonInputValue.substring(0, 100)}${jsonInputValue.length > 100 ? '...' : ''}`, 'info');
-                } else {
-                    log(`⚠️ Warning: 'moda-json' parameter not found in session parameters`, 'warning');
-                    log('Available parameters:', 'debug');
-                    Object.entries(session.parameters).forEach(([id, param]) => {
-                        log(`  - ID: ${id}, Name: ${param.name}`, 'debug');
-                    });
-                    log('Attempting to add moda-json parameter anyway...', 'info');
-                    parameters['moda-json'] = jsonInputValue;
+        // Find the moda-json input parameter
+        let modaJsonInputId: string | null = null;
+        if (sessionData.parameters) {
+            for (const [paramId, paramDef] of Object.entries(sessionData.parameters)) {
+                if ((paramDef as any).name === 'moda-json') {
+                    modaJsonInputId = paramId;
+                    break;
                 }
-            } catch (e: any) {
-                log(`⚠️ Warning: JSON input is not valid JSON: ${e.message}`, 'warning');
-                log('Continuing without moda-json parameter', 'warning');
             }
         }
         
+        if (!modaJsonInputId) {
+            log('⚠️ Warning: moda-json parameter not found', 'warning');
+            log('Available parameters:', 'debug');
+            if (sessionData.parameters) {
+                Object.entries(sessionData.parameters).forEach(([id, param]: [string, any]) => {
+                    log(`  - ${param.name} (${id}): ${param.type}`, 'debug');
+                });
+            }
+            throw new Error('Could not find moda-json input parameter');
+        }
+        
+        log(`✓ Found moda-json parameter (${modaJsonInputId})`, 'info');
+        updateProgress(30);
+        
+        // Get JSON URL from input
+        const jsonUrlValue = jsonInput.value.trim();
+        if (!jsonUrlValue) {
+            throw new Error('Please provide a JSON URL');
+        }
+        
+        log(`✓ Using JSON URL: ${jsonUrlValue}`, 'info');
+        updateProgress(35);
+        
+        // Prepare export request (matching the code sample structure)
+        const exportRequest: any = {
+            parameters: {
+                [modaJsonInputId]: jsonUrlValue
+            },
+            exports: [exportId]
+        };
+        
+        log('🚀 Submitting export computation...', 'info');
+        log('Export request:', 'debug');
+        log(JSON.stringify(exportRequest, null, 2), 'debug');
+        
         updateProgress(40);
         
-        log('🚀 Requesting export from backend...', 'info');
-        log(`Sending parameters: ${JSON.stringify(parameters, null, 2)}`, 'debug');
+        // Create ExportApi and submit computation
+        const endpoint = SHAPEDIVER_ENDPOINT || 'https://sdr8euc1.eu-central-1.shapediver.com';
+        const config = new Configuration({ basePath: endpoint });
+        const exportApi = new ExportApi(config);
         
-        const exportResult = await exportApi.request(parameters);
+        const exportResults = await exportApi.computeExports(sessionId, exportRequest);
         
         updateProgress(70);
         
-        log('✅ Export request completed!', 'success');
-        log(`Export result:`, 'debug');
-        log(JSON.stringify(exportResult, null, 2), 'debug');
+        log('✅ Export computation completed!', 'success');
+        log('Export results:', 'debug');
+        log(JSON.stringify(exportResults.data, null, 2), 'debug');
         
         exportStatus.textContent = 'Processing export...';
         updateProgress(85);
         
+        // Get the export data from the results
+        const exportData = exportResults.data;
+        if (!exportData.exports || !exportData.exports[exportId]) {
+            throw new Error('Export not found in results');
+        }
+        
+        const selectedExportData = exportData.exports[exportId] as any;
+        log('Selected export data:', 'debug');
+        log(JSON.stringify(selectedExportData, null, 2), 'debug');
+        
         // Check for export content
-        if (exportResult.content && exportResult.content.length > 0) {
-            const content = exportResult.content[0];
-            log(`Export content received: ${content.href}`, 'success');
-            log(`Content type: ${content.format}`, 'info');
+        if (selectedExportData.content && Array.isArray(selectedExportData.content) && selectedExportData.content.length > 0) {
+            const content = selectedExportData.content[0];
+            log(`✅ Export content received`, 'success');
+            log(`Content format: ${content.format || 'unknown'}`, 'info');
+            log(`Content type: ${content.contentType || 'unknown'}`, 'info');
             
             exportStatus.textContent = 'Export ready!';
             updateProgress(100);
             
-            // Create download link
-            const downloadInfo = `
-                <strong>✅ Export successful!</strong><br>
-                <strong>Format:</strong> ${content.format}<br>
-                <strong>Download URL:</strong><br>
-                <a href="${content.href}" target="_blank" download>${content.href}</a>
-            `;
-            showExportInfo(downloadInfo);
+            // Get download URL
+            let downloadUrl = content.href || content.url || content.downloadUrl;
             
-            // Auto-download
-            log('📥 Initiating download...', 'info');
-            const link = document.createElement('a');
-            link.href = content.href;
-            link.download = `export.${content.format}`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            log('🎉 Export download triggered!', 'success');
+            if (downloadUrl) {
+                log(`Download URL: ${downloadUrl}`, 'info');
+                
+                // Create download link
+                const downloadInfo = `
+                    <strong>✅ Export successful!</strong><br>
+                    <strong>Format:</strong> ${content.format || 'unknown'}<br>
+                    <strong>Content Type:</strong> ${content.contentType || 'unknown'}<br>
+                    <strong>Download URL:</strong><br>
+                    <a href="${downloadUrl}" target="_blank" download>${downloadUrl}</a>
+                `;
+                showExportInfo(downloadInfo);
+                
+                // Auto-download
+                log('📥 Initiating download...', 'info');
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = `export.${content.format || 'file'}`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                log('🎉 Export download triggered!', 'success');
+            } else {
+                log('⚠️ Export completed but no download URL found', 'warning');
+                exportStatus.textContent = 'No download URL';
+                
+                const info = `
+                    <strong>⚠️ Export completed</strong><br>
+                    No download URL available in response
+                `;
+                showExportInfo(info);
+            }
             
         } else {
             log('⚠️ Export completed but no content was returned', 'warning');
+            log('Export data structure:', 'debug');
+            log(JSON.stringify(selectedExportData, null, 2), 'debug');
             exportStatus.textContent = 'No content returned';
+            
+            const info = `
+                <strong>⚠️ Export completed</strong><br>
+                No content array found in response
+            `;
+            showExportInfo(info);
         }
         
         setTimeout(() => hideProgress(), 1000);

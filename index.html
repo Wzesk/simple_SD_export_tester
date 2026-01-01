@@ -288,23 +288,22 @@
             font-size: 14px;
         }
 
-        .input-section textarea {
+        .input-section input[type="text"] {
             width: 100%;
             padding: 12px;
             border: 2px solid #ddd;
             border-radius: 6px;
             font-family: 'Courier New', monospace;
             font-size: 13px;
-            resize: vertical;
             transition: border-color 0.2s;
         }
 
-        .input-section textarea:focus {
+        .input-section input[type="text"]:focus {
             outline: none;
             border-color: #667eea;
         }
 
-        .input-section textarea::placeholder {
+        .input-section input[type="text"]::placeholder {
             color: #999;
         }
     </style>
@@ -340,15 +339,19 @@
 
         <div class="input-section">
             <label for="jsonInput">
-                <strong>JSON Input</strong> (moda-json parameter):
+                <strong>JSON URL</strong> (moda-json parameter):
             </label>
-            <textarea 
+            <input 
+                type="text"
                 id="jsonInput" 
-                placeholder='Paste your JSON here, e.g. {"key": "value"}'
-                rows="6"
-            ></textarea>
+                placeholder="Enter your ngrok URL here: https://xxxx.ngrok-free.app/test1.json"
+                value="https://raw.githubusercontent.com/Wzesk/simple_SD_export_tester/refs/heads/main/sample_json/test1.json"
+            />
             <small style="color: #666; display: block; margin-top: 4px;">
-                This will be submitted as the "moda-json" parameter to ShapeDiver
+                ⚠️ <strong>Must be publicly accessible with content-type: application/json</strong><br>
+                • jsDelivr and GitHub raw URLs don't work (return text/plain)<br>
+                • <strong>Recommended:</strong> Use ngrok with local JSON server - run <code>start-with-ngrok.bat</code><br>
+                • Or host JSON files on your own server with proper headers
             </small>
         </div>
 

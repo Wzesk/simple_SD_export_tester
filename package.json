@@ -9,6 +9,7 @@
     "preview": "vite preview --config vite.config.ts"
   },
   "dependencies": {
+    "@shapediver/sdk.geometry-api-sdk-v2": "^2.10.0",
     "@shapediver/viewer.session": "3.12.10"
   },
   "devDependencies": {
