@@ -31,10 +31,14 @@ const progressBar = document.getElementById('progressBar') as HTMLElement;
 const progressFill = document.getElementById('progressFill') as HTMLElement;
 const exportInfo = document.getElementById('exportInfo') as HTMLElement;
 const jsonInput = document.getElementById('jsonInput') as HTMLInputElement;
+const backendSelector = document.getElementById('backendSelector') as HTMLSelectElement;
 
 // Environment variables
 const EXPORT_BACKEND = import.meta.env.VITE_EXPORT_BACKEND;
+const ALT_EXPORT_BACKEND = import.meta.env.ALT_VITE_EXPORT_BACKEND;
 const SHAPEDIVER_ENDPOINT = import.meta.env.VITE_SHAPEDIVER_ENDPOINT;
+
+let currentBackendTicket = EXPORT_BACKEND;
 
 // Logging utilities
 type LogLevel = 'info' | 'success' | 'error' | 'warning' | 'debug';
@@ -94,10 +98,46 @@ function hideExportInfo() {
 
 // Initialize UI with environment variables
 function initializeUI() {
+    const updateBackendDisplay = () => {
+        if (currentBackendTicket) {
+            const shortTicket = currentBackendTicket.substring(0, 40) + '...';
+            envBackend.textContent = shortTicket;
+            log(`Backend ticket set to: ${shortTicket}`, 'debug');
+        } else {
+            envBackend.textContent = 'NOT SET';
+            log('⚠️ Backend ticket not found', 'error');
+        }
+    };
+
+    // Check if Alt backend is available
+    if (!ALT_EXPORT_BACKEND) {
+        const altOption = backendSelector.querySelector('option[value="alt"]') as HTMLOptionElement;
+        if (altOption) {
+            altOption.disabled = true;
+            altOption.textContent += ' (Not configured)';
+        }
+    }
+
+    backendSelector.addEventListener('change', () => {
+        const selected = backendSelector.value;
+        if (selected === 'primary') {
+            currentBackendTicket = EXPORT_BACKEND;
+            log('Switched to Primary Backend', 'info');
+        } else {
+            currentBackendTicket = ALT_EXPORT_BACKEND;
+            log('Switched to Alt Backend', 'info');
+        }
+        
+        if (isConnected) {
+            log('⚠️ Backend changed while connected. Please disconnect and reconnect.', 'warning');
+        }
+        
+        updateBackendDisplay();
+    });
+
+    // Initial setup
     if (EXPORT_BACKEND) {
-        const shortTicket = EXPORT_BACKEND.substring(0, 40) + '...';
-        envBackend.textContent = shortTicket;
-        log(`Export backend ticket loaded (${EXPORT_BACKEND.length} chars)`, 'debug');
+        updateBackendDisplay();
     } else {
         envBackend.textContent = 'NOT SET';
         log('⚠️ VITE_EXPORT_BACKEND not found in environment', 'error');
@@ -114,8 +154,8 @@ function initializeUI() {
 
 // Connect to ShapeDiver backend
 async function connectToBackend() {
-    if (!EXPORT_BACKEND) {
-        log('❌ Cannot connect: VITE_EXPORT_BACKEND is not set', 'error');
+    if (!currentBackendTicket) {
+        log('❌ Cannot connect: Backend ticket is not set', 'error');
         updateStatus('Configuration Error', 'error');
         return;
     }
@@ -132,7 +172,7 @@ async function connectToBackend() {
         showProgress();
         updateProgress(10);
         
-        log(`Using ticket: ${EXPORT_BACKEND.substring(0, 40)}...`, 'debug');
+        log(`Using ticket: ${currentBackendTicket.substring(0, 40)}...`, 'debug');
         
         const endpoint = SHAPEDIVER_ENDPOINT || 'https://sdr8euc1.eu-central-1.shapediver.com';
         
@@ -145,7 +185,7 @@ async function connectToBackend() {
         
         // Create session using SessionApi
         const sessionApi = new SessionApi(config);
-        const sessionResponse = await sessionApi.createSessionByTicket(EXPORT_BACKEND);
+        const sessionResponse = await sessionApi.createSessionByTicket(currentBackendTicket);
         
         updateProgress(60);
         
